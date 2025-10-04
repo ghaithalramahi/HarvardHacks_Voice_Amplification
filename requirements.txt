@@ -1,0 +1,11 @@
+numpy
+sounddevice
+webrtcvad
+librosa
+scipy
+torch
+torchaudio
+git+https://github.com/facebookresearch/denoiser.git#egg=denoiser
+flask
+flask-socketio
+python-socketio

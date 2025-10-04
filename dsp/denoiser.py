@@ -4,9 +4,7 @@ import numpy as np
 import os
 import sys
 
-# Add Facebook denoiser path if cloned locally
-# If you cloned facebook/denoiser to ./denoiser_repo/
-# sys.path.insert(0, './denoiser_repo')
+# Add Facebook denoiser path 
 
 from denoiser import pretrained
 from denoiser.dsp import convert_audio
@@ -83,4 +81,5 @@ class Denoiser:
             denoised = denoised.reshape(-1, 1)
         
         return denoised
+
 

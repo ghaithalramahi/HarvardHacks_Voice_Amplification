@@ -23,6 +23,8 @@ class VAD:
 
     def float_to_bytes(self, audio):
         """Convert float32 [-1,1] numpy array to 16-bit PCM bytes."""
+        if audio.ndim == 2:
+            audio = audio[:, 0]
         return (audio * 32767).astype(np.int16).tobytes()
 
     def listen_live(self):
@@ -48,5 +50,5 @@ class VAD:
 
 # --- Run directly for quick test ---
 if __name__ == "__main__":
-    vad = VAD(mode=3)  #
+    vad = VAD(mode=3)
     vad.listen_live()

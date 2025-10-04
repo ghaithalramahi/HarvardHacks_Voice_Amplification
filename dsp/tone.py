@@ -1,35 +1,36 @@
-import sounddevice as sd
 import numpy as np
-from dsp.vad import VAD
-from dsp.denoiser import Denoiser
-from tone import confident_voice  # your tonal enhancer
+import librosa
+import scipy.signal as sp
 
 
-def main():
-    vad = VAD(mode=0)  # Sensitive to whispers
-    denoiser = Denoiser()
-    samplerate = 16000
-    frame_len = vad.frame_len
+def confident_voice(audio, sr):
+    """Apply tone enhancement for confident voice."""
+    
+    # Handle shape
+    if audio.ndim == 2:
+        audio = audio[:, 0]
+    
+    # 1️⃣ Preemphasis
+    audio = librosa.effects.preemphasis(audio)
 
-    print("Whisper into the mic — your voice will be denoised and made confident.")
-    with sd.Stream(channels=1, samplerate=samplerate, dtype="float32") as stream:
-        while True:
-            # 1️⃣ Capture one frame
-            input_audio, _ = stream.read(frame_len)
-            frame = vad.float_to_bytes(input_audio[:, 0])
+    # 2️⃣ Add subtle low–mid EQ boost (fuller voice)
+    b, a = sp.butter(2, [100 / (sr / 2), 800 / (sr / 2)], btype="band")
+    low_mid = sp.lfilter(b, a, audio)
+    audio = audio + 0.4 * low_mid
 
-            # 2️⃣ Process only if speech detected
-            if vad.is_speech(frame) and np.max(np.abs(input_audio)) > 0.02:
-                # Denoise
-                denoised = denoiser.process(input_audio)
+    # 3️⃣ Light compression (steady loudness)
+    audio = np.tanh(audio * 2.5)
 
-                # Apply tonal shaping (confidence effect)
-                confident = confident_voice(denoised[:, 0], samplerate)
-                confident = confident.reshape(-1, 1)
+    # 4️⃣ Slight high boost for clarity
+    b, a = sp.butter(1, [3000 / (sr / 2)], btype="high")
+    highs = sp.lfilter(b, a, audio)
+    audio = audio + 0.2 * highs
 
-                # Play processed frame
-                stream.write(confident)
-                print("Confident whisper detected — enhanced output.")
-            else:
-                # Write silence
-                stream.write(np.zeros_like(input_audio))
+    # 5️⃣ Add micro reverb (room presence)
+    reverb = np.convolve(audio, np.ones(400) / 400, mode="full")[: len(audio)]
+    audio = 0.7 * audio + 0.3 * reverb
+
+    # Normalize
+    audio = audio / (np.max(np.abs(audio)) + 1e-6)
+
+    return audio.astype(np.float32).reshape(-1, 1)

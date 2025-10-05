@@ -1,11 +1,8 @@
 import torch
 import torchaudio
 import numpy as np
-import os
-import sys
 
 # Add Facebook denoiser path 
-
 from denoiser import pretrained
 from denoiser.dsp import convert_audio
 
@@ -81,7 +78,3 @@ class Denoiser:
             denoised = denoised.reshape(-1, 1)
         
         return denoised
-
-
-
-

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Flow Test</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            display: block;
+            width: 300px;
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.success { background: #2d5a2d; }
+        .status.error { background: #5a2d2d; }
+        .status.info { background: #2d4a5a; }
+        .log {
+            background: #000;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔊 Audio Flow Test</h1>
+        
+        <div id="status" class="status info">Ready to test audio flow</div>
+        
+        <button id="startBtn">Start Audio Flow Test</button>
+        <button id="stopBtn" disabled>Stop Test</button>
+        
+        <h3>Debug Log:</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let audioContext;
+        let mediaStream;
+        let processor;
+        let isProcessing = false;
+        let packetCount = 0;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function updateStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        // Socket events
+        socket.on('connect', () => {
+            log('✅ Connected to server');
+            updateStatus('Connected to server', 'success');
+        });
+
+        socket.on('ready', (data) => {
+            log('✅ Server ready: ' + data.message);
+        });
+
+        socket.on('processed_audio', (data) => {
+            packetCount++;
+            log(`📊 Packet ${packetCount}: Status=${data.status}`);
+            
+            if (data.status === 'processed') {
+                log(`   📈 Metrics: RMS=${data.metrics.rms.toFixed(4)}, SNR=${data.metrics.snr.toFixed(1)}dB`);
+                
+                if (data.audio) {
+                    log(`   🔊 Audio data: ${data.audio.length} chars base64`);
+                    playAudio(data.audio);
+                } else {
+                    log('   ❌ No audio data in packet');
+                }
+            } else if (data.status === 'wrong_speaker') {
+                log('   👤 Wrong speaker detected');
+            } else if (data.status === 'silence') {
+                log('   🔇 Silence detected');
+            }
+        });
+
+        socket.on('error', (data) => {
+            log('❌ Server error: ' + data.message);
+            updateStatus('Server error: ' + data.message, 'error');
+        });
+
+        // Start test
+        startBtn.addEventListener('click', async () => {
+            try {
+                log('🎤 Starting audio flow test...');
+                
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        sampleRate: 16000,
+                        channelCount: 1
+                    }
+                });
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 16000
+                });
+
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = (e) => {
+                    if (!isProcessing) return;
+
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const maxLevel = Math.max(...inputData.map(Math.abs));
+                    
+                    if (maxLevel > 0.001) {
+                        const audioData = Array.from(inputData);
+                        const buffer = new Float32Array(audioData);
+                        const base64 = arrayBufferToBase64(buffer.buffer);
+                        
+                        socket.emit('audio_data', { audio: base64 });
+                        
+                        if (packetCount % 10 === 0) {
+                            log(`📤 Sent audio packet (level: ${maxLevel.toFixed(4)})`);
+                        }
+                    }
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                isProcessing = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                updateStatus('🎤 Audio flow test active - speak into microphone', 'success');
+                log('✅ Audio processing started');
+
+            } catch (err) {
+                log('❌ Error: ' + err.message);
+                updateStatus('❌ Error: ' + err.message, 'error');
+            }
+        });
+
+        // Stop test
+        stopBtn.addEventListener('click', () => {
+            log('⏹️ Stopping audio flow test...');
+            isProcessing = false;
+            
+            if (processor) processor.disconnect();
+            if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+            if (audioContext) audioContext.close();
+
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            updateStatus('⏹️ Test stopped', 'info');
+        });
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        function playAudio(base64Audio) {
+            try {
+                const binaryString = atob(base64Audio);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                
+                const audioData = new Int16Array(bytes.buffer);
+                const floatData = new Float32Array(audioData.length);
+                let maxVal = 0;
+                for (let i = 0; i < audioData.length; i++) {
+                    floatData[i] = audioData[i] / 32768.0;
+                    maxVal = Math.max(maxVal, Math.abs(floatData[i]));
+                }
+
+                const audioBuffer = audioContext.createBuffer(1, floatData.length, 16000);
+                audioBuffer.getChannelData(0).set(floatData);
+
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.start();
+                
+                log(`🔊 Played audio: ${audioData.length} samples, max level: ${maxVal.toFixed(4)}`);
+            } catch (err) {
+                log('❌ Audio playback error: ' + err.message);
+            }
+        }
+
+        // Initial log
+        log('🚀 Audio flow test tool loaded');
+    </script>
+</body>
+</html>

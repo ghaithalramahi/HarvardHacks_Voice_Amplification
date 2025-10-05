@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Debug - Voice Amplification</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.success { background: #2d5a2d; }
+        .status.error { background: #5a2d2d; }
+        .status.info { background: #2d4a5a; }
+        .status.warning { background: #5a4a2d; }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .metric {
+            background: #333;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .log {
+            background: #000;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 5px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Audio Debug Tool</h1>
+        
+        <div id="status" class="status info">Ready to test audio capture</div>
+        
+        <div>
+            <button id="startBtn">Start Audio Capture</button>
+            <button id="stopBtn" disabled>Stop Audio Capture</button>
+            <button id="testBtn">Test Server Connection</button>
+        </div>
+        
+        <div class="metrics">
+            <div class="metric">
+                <div>Audio Level</div>
+                <div class="metric-value" id="audioLevel">0.0000</div>
+            </div>
+            <div class="metric">
+                <div>Server Status</div>
+                <div class="metric-value" id="serverStatus">Disconnected</div>
+            </div>
+            <div class="metric">
+                <div>Audio Packets Sent</div>
+                <div class="metric-value" id="packetCount">0</div>
+            </div>
+        </div>
+        
+        <h3>Debug Log:</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let audioContext;
+        let mediaStream;
+        let processor;
+        let isProcessing = false;
+        let analyser;
+        let packetCount = 0;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const testBtn = document.getElementById('testBtn');
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function updateStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        // Socket events
+        socket.on('connect', () => {
+            log('✅ Connected to server');
+            document.getElementById('serverStatus').textContent = 'Connected';
+            updateStatus('Connected to server', 'success');
+        });
+
+        socket.on('disconnect', () => {
+            log('❌ Disconnected from server');
+            document.getElementById('serverStatus').textContent = 'Disconnected';
+            updateStatus('Disconnected from server', 'error');
+        });
+
+        socket.on('ready', (data) => {
+            log('✅ Server ready: ' + data.message);
+            updateStatus('Server ready', 'success');
+        });
+
+        socket.on('processed_audio', (data) => {
+            log(`📊 Received audio response: ${JSON.stringify(data)}`);
+            if (data.metrics) {
+                document.getElementById('audioLevel').textContent = data.metrics.rms.toFixed(4);
+            }
+        });
+
+        socket.on('error', (data) => {
+            log('❌ Server error: ' + data.message);
+            updateStatus('Server error: ' + data.message, 'error');
+        });
+
+        // Test server connection
+        testBtn.addEventListener('click', () => {
+            log('🧪 Testing server connection...');
+            socket.emit('test', { message: 'Hello server!' });
+        });
+
+        // Start audio capture
+        startBtn.addEventListener('click', async () => {
+            try {
+                log('🎤 Requesting microphone access...');
+                updateStatus('Requesting microphone access...', 'info');
+
+                // Check if getUserMedia is supported
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('getUserMedia not supported in this browser');
+                }
+
+                // Request microphone access with more permissive constraints
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        sampleRate: 16000,
+                        channelCount: 1
+                    }
+                });
+
+                log('✅ Microphone access granted');
+                log(`📊 Audio tracks: ${mediaStream.getAudioTracks().length}`);
+                
+                // Log audio track info
+                mediaStream.getAudioTracks().forEach((track, index) => {
+                    log(`Track ${index}: ${track.label} (${track.kind})`);
+                    log(`  - enabled: ${track.enabled}`);
+                    log(`  - muted: ${track.muted}`);
+                });
+
+                // Create audio context
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 16000
+                });
+
+                log(`🎵 Audio context created (sample rate: ${audioContext.sampleRate})`);
+
+                // Create audio source
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                
+                // Create analyser for visualization
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                // Create script processor for audio processing
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = (e) => {
+                    if (!isProcessing) return;
+
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const maxLevel = Math.max(...inputData.map(Math.abs));
+                    
+                    // Update audio level display
+                    document.getElementById('audioLevel').textContent = maxLevel.toFixed(4);
+
+                    // Only send audio if there's actual sound
+                    if (maxLevel > 0.001) {
+                        // Convert to base64
+                        const audioData = Array.from(inputData);
+                        const buffer = new Float32Array(audioData);
+                        const base64 = arrayBufferToBase64(buffer.buffer);
+                        
+                        // Send to server
+                        socket.emit('audio_data', { audio: base64 });
+                        packetCount++;
+                        document.getElementById('packetCount').textContent = packetCount;
+                        
+                        if (packetCount % 10 === 0) {
+                            log(`📤 Sent ${packetCount} audio packets (level: ${maxLevel.toFixed(4)})`);
+                        }
+                    }
+                };
+
+                // Connect audio nodes
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                isProcessing = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                updateStatus('🎤 Audio capture active - speak into microphone', 'success');
+                log('✅ Audio processing started');
+
+            } catch (err) {
+                log('❌ Microphone error: ' + err.message);
+                updateStatus('❌ Microphone Error: ' + err.message, 'error');
+                console.error('Microphone error:', err);
+            }
+        });
+
+        // Stop audio capture
+        stopBtn.addEventListener('click', () => {
+            log('⏹️ Stopping audio capture...');
+            isProcessing = false;
+            
+            if (processor) {
+                processor.disconnect();
+                log('✅ Audio processor disconnected');
+            }
+            
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => {
+                    track.stop();
+                    log(`✅ Audio track stopped: ${track.label}`);
+                });
+            }
+            
+            if (audioContext) {
+                audioContext.close();
+                log('✅ Audio context closed');
+            }
+
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            updateStatus('⏹️ Audio capture stopped', 'info');
+            document.getElementById('audioLevel').textContent = '0.0000';
+        });
+
+        // Helper function to convert ArrayBuffer to base64
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        // Initial log
+        log('🚀 Audio debug tool loaded');
+        log(`🌐 Browser: ${navigator.userAgent}`);
+        log(`🔊 getUserMedia supported: ${!!navigator.mediaDevices?.getUserMedia}`);
+        log(`🎵 Web Audio API supported: ${!!window.AudioContext || !!window.webkitAudioContext}`);
+    </script>
+</body>
+</html>

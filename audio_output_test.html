@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Output Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            display: block;
+            width: 300px;
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.success { background: #2d5a2d; }
+        .status.error { background: #5a2d2d; }
+        .status.info { background: #2d4a5a; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔊 Audio Output Test</h1>
+        
+        <div id="status" class="status info">Ready to test audio output</div>
+        
+        <button id="testTone">Test Tone (440Hz)</button>
+        <button id="testNoise">Test Noise</button>
+        <button id="testClick">Test Click</button>
+        <button id="testLoop">Test Loop (5 seconds)</button>
+        
+        <h3>Instructions:</h3>
+        <ol>
+            <li><strong>Check your speakers/headphones are working</strong> - play music or video first</li>
+            <li><strong>Check Windows volume</strong> - make sure it's not muted and volume is up</li>
+            <li><strong>Click "Test Tone"</strong> - you should hear a steady beep</li>
+            <li><strong>If no sound:</strong> Check browser audio settings and try different browser</li>
+        </ol>
+        
+        <h3>Browser Audio Settings:</h3>
+        <ul>
+            <li><strong>Chrome:</strong> Click lock icon in address bar → Allow sound</li>
+            <li><strong>Firefox:</strong> Click shield icon → Allow autoplay</li>
+            <li><strong>Edge:</strong> Click lock icon → Allow sound</li>
+        </ul>
+    </div>
+
+    <script>
+        let audioContext;
+        
+        const statusDiv = document.getElementById('status');
+        
+        function updateStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+        
+        function createAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            return audioContext;
+        }
+        
+        // Test tone (440Hz)
+        document.getElementById('testTone').addEventListener('click', () => {
+            try {
+                const ctx = createAudioContext();
+                const oscillator = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(ctx.destination);
+                
+                oscillator.frequency.setValueAtTime(440, ctx.currentTime); // A4 note
+                gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+                
+                oscillator.start();
+                updateStatus('🔊 Playing 440Hz tone - you should hear a steady beep', 'info');
+                
+                oscillator.onended = () => {
+                    updateStatus('✅ Tone test completed', 'success');
+                };
+                
+                setTimeout(() => {
+                    oscillator.stop();
+                }, 2000);
+                
+            } catch (err) {
+                updateStatus('❌ Tone test failed: ' + err.message, 'error');
+            }
+        });
+        
+        // Test noise
+        document.getElementById('testNoise').addEventListener('click', () => {
+            try {
+                const ctx = createAudioContext();
+                const bufferSize = ctx.sampleRate * 1; // 1 second
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * 0.1; // White noise
+                }
+                
+                const source = ctx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(ctx.destination);
+                source.start();
+                
+                updateStatus('🔊 Playing noise - you should hear static', 'info');
+                
+                source.onended = () => {
+                    updateStatus('✅ Noise test completed', 'success');
+                };
+                
+            } catch (err) {
+                updateStatus('❌ Noise test failed: ' + err.message, 'error');
+            }
+        });
+        
+        // Test click
+        document.getElementById('testClick').addEventListener('click', () => {
+            try {
+                const ctx = createAudioContext();
+                const bufferSize = ctx.sampleRate * 0.1; // 0.1 seconds
+                const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                
+                // Create a click sound
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.sin(2 * Math.PI * 1000 * i / ctx.sampleRate) * 0.1;
+                }
+                
+                const source = ctx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(ctx.destination);
+                source.start();
+                
+                updateStatus('🔊 Playing click - you should hear a short beep', 'info');
+                
+                source.onended = () => {
+                    updateStatus('✅ Click test completed', 'success');
+                };
+                
+            } catch (err) {
+                updateStatus('❌ Click test failed: ' + err.message, 'error');
+            }
+        });
+        
+        // Test loop
+        document.getElementById('testLoop').addEventListener('click', () => {
+            try {
+                const ctx = createAudioContext();
+                let isPlaying = false;
+                let oscillator;
+                
+                function playTone() {
+                    if (isPlaying) return;
+                    isPlaying = true;
+                    
+                    oscillator = ctx.createOscillator();
+                    const gainNode = ctx.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(ctx.destination);
+                    
+                    oscillator.frequency.setValueAtTime(440, ctx.currentTime);
+                    gainNode.gain.setValueAtTime(0.05, ctx.currentTime);
+                    
+                    oscillator.start();
+                    
+                    oscillator.onended = () => {
+                        if (isPlaying) {
+                            setTimeout(() => playTone(), 100);
+                        }
+                    };
+                }
+                
+                playTone();
+                updateStatus('🔊 Playing 5-second loop - you should hear repeating beeps', 'info');
+                
+                setTimeout(() => {
+                    isPlaying = false;
+                    if (oscillator) oscillator.stop();
+                    updateStatus('✅ Loop test completed', 'success');
+                }, 5000);
+                
+            } catch (err) {
+                updateStatus('❌ Loop test failed: ' + err.message, 'error');
+            }
+        });
+        
+        // Initial status
+        updateStatus('🎵 Audio output test ready - check your speakers/headphones first', 'info');
+    </script>
+</body>
+</html>

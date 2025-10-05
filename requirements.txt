@@ -1,22 +1,11 @@
-# Core dependencies
-numpy>=1.24.0
-scipy>=1.10.0
-
-# Real-time audio processing
-sounddevice>=0.4.6
-librosa>=0.10.0
-webrtcvad>=2.0.10
-
-# Deep learning (optional, only if you're using denoiser models)
-torch>=2.0.0
-torchaudio>=2.0.0
-
-# Facebook Denoiser (optional, only if needed)
-# Requires torch and torchaudio installed first
+numpy
+sounddevice
+webrtcvad
+librosa
+scipy
+torch
+torchaudio
 git+https://github.com/facebookresearch/denoiser.git#egg=denoiser
-
-# Web server (only if you're building a Flask-based app or dashboard)
-flask>=2.3.0
-flask-socketio>=5.3.0
-python-socketio>=5.9.0
-eventlet>=0.33.0
+flask
+flask-socketio
+python-socketio

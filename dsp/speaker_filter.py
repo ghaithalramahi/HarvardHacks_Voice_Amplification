@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sat Oct  4 16:12:06 2025
+
 @author: ayskagadhwala
 """
+
 import numpy as np
 from scipy.fft import rfft, rfftfreq
 

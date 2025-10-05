@@ -21,7 +21,7 @@ import wave
 import os 
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here'
+app.config['SECRET_KEY'] = 'a7f3e9d2c8b4f1a6e3d9c5b1f7a3e9d5c1b7f3a9e5d1c7b3f9a5e1d7c3b9f5a1'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Initialize components globally

@@ -48,7 +48,7 @@ class VAD:
                     print("Silence")
 
 
-# --- Run for quick test ---
+# --- Run directly for quick test ---
 if __name__ == "__main__":
     vad = VAD(mode=3)
     vad.listen_live()

@@ -21,7 +21,7 @@ def main():
     frame_len = vad.frame_len
 
     print("\n" + "="*60)
-    print("🎤 Whisper Amplifier with Real-Time Metrics")
+    print("🎤 SpeakNow")
     print("="*60)
     print("\nSpeak into the mic - your whisper will be processed and amplified.")
     print("Press Ctrl+C to stop.\n")
